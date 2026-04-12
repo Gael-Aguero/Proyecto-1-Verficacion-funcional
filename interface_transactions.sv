@@ -2,7 +2,7 @@
 // Definición del tipo de transacciones posibles en la fifo //
 //////////////////////////////////////////////////////////////
 
-typedef enum { lectura, escritura, reset} tipo_trans; 
+typedef enum {lectura, escritura, reset, escritura_lectura} tipo_trans; 
 
 /////////////////////////////////////////////////////////////////////////////////////////
 //Transacción: este objeto representa las transacciones que entran y salen de la fifo. //
