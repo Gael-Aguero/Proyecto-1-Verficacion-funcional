@@ -1,10 +1,9 @@
- /////////////////////////////////////////////////////////////////////////////////////////////////////////////
- // Driver/Monitor: este objeto es responsable de la interacción entre el ambiente y el la fifo bajo prueba //
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////
+ // Driver/Monitor separados: este objeto es responsable de la interacción entre el ambiente y el la fifo bajo prueba //
  /////////////////////////////////////////////////////////////////////////////////////////////////////////////
   class driver #(parameter width =16);
     virtual fifo_if #(.width(width))vif;
     trans_fifo_mbx agnt_drv_mbx;
-    trans_fifo_mbx drv_chkr_mbx;    
     int espera;
 
     task run();
@@ -34,22 +33,28 @@
         case(transaction.tipo)
 	  lectura: begin
 	     transaction.dato = vif.dato_out;
-	     transaction.tiempo = $time;
 	     @(posedge vif.clk);
 	     vif.pop = 1;
-	     drv_chkr_mbx.put(transaction);
 	     transaction.print("Driver: Transaccion ejecutada");
 	   end
 	   escritura: begin
 	     vif.push = 1;
-	     transaction.tiempo = $time;
-	     drv_chkr_mbx.put(transaction); 
 	     transaction.print("Driver: Transaccion ejecutada");
 	   end
+     //aqui esta la nueva funcion
+    escritura_lectura: begin
+      vif.dato_in = transaction.dato;
+      vif.push = 1;
+      vif.pop = 1;
+      @(posedge vif.clk);
+      transaction.dato_out = vif.dato_out;
+      vif.push = 0;
+      vif.pop = 0;
+      transaction.print("Driver: transaccion ejecutada");
+    end
+        
 	   reset: begin
 	     vif.rst =1;
-	     transaction.tiempo = $time;
-	     drv_chkr_mbx.put(transaction); 
 	     transaction.print("Driver: Transaccion ejecutada");
 	   end
 	  default: begin
@@ -61,4 +66,3 @@
       end
     endtask
   endclass
-
