@@ -1,239 +1,98 @@
-
-//////////////////////////////////////////////////////////
-// Definition of a D flip flop with asyncronous reset  //
-/////////////////////////////////////////////////////////
-
-module dff_async_rst (
-  input data,
-  input clk,
-  input reset,
-  output reg q);
-
-  always @ ( posedge clk or posedge reset)    
-    if (reset) begin
-      q <= 1'b0;
-    end  else begin
-      q <= data;
-    end
-
-endmodule
-
-//////////////////////////////////////////////////////////
-// Definition of a D Latch  with asyncronous reset  //
-/////////////////////////////////////////////////////////
-
-module dltch_async_rst (
-  input data,
-  input clk,
-  input reset,
-  output reg q);
-
-  always @ (clk or reset or data)    
-    if (reset) begin
-      q <= 1'b0;
-    end  else if (clk) begin
-      q <= data;
-    end
-
-endmodule
-
-//////////////////////////////////////////////////////////
-// Definition of a D Latch  without  reset  //
-/////////////////////////////////////////////////////////
-
-module dltch (
-  input data,
-  input clk,
-  output reg q);
-
-  always @ (clk or data)    
-    if (clk) begin
-      q <= data;
-    end
-
-endmodule
-
-///////////////////////////////////////////////////////////////////////
-// Definition of the prll D register with flops
-///////////////////////////////////////////////////////////////////////
-
-module prll_d_reg #(parameter bits = 32)(
-  input clk,
-  input reset,
-  input [bits-1:0] D_in,
-  output [bits-1:0] D_out
-);
-  genvar i;
-  generate
-    for(i = 0; i < bits; i=i+1) begin:bit_
-      dff_async_rst prll_regstr_(.data(D_in[i]),.clk(clk),.reset(reset),.q(D_out[i]));
-    end
-  endgenerate
-
-endmodule
-
-///////////////////////////////////////////////////////////////////////
-// Definition of the prll D register with Lathces 
-///////////////////////////////////////////////////////////////////////
-
-module prll_d_ltch_no_rst #(parameter bits = 32)(
-  input clk,
-  input [bits-1:0] D_in,
-  output [bits-1:0] D_out
-);
-  genvar i;
-  generate
-    for(i = 0; i < bits; i=i+1) begin:bit_
-      dltch prll_regstr_(.data(D_in[i]),.clk(clk),.q(D_out[i]));
-    end
-  endgenerate
-
-endmodule
-
-///////////////////////////////////////////////////////////////////////
-// Definition of the prll D register with Lathces 
-///////////////////////////////////////////////////////////////////////
-
-module prll_d_ltch #(parameter bits = 32)(
-  input clk,
-  input reset,
-  input [bits-1:0] D_in,
-  output [bits-1:0] D_out
-);
-  genvar i;
-  generate
-    for(i = 0; i < bits; i=i+1) begin:bit_
-      dltch_async_rst prll_regstr_(.data(D_in[i]),.clk(clk),.reset(reset),.q(D_out[i]));
-    end
-  endgenerate
-
-endmodule
-
-
-///////////////////////////////////////////////////////////////////////
-// Definition of the FIFO with Flip_Flops 
-///////////////////////////////////////////////////////////////////////
-module fifo_flops #(parameter depth = 16,parameter bits = 32)(
-  input [bits-1:0] Din,
-  output reg [bits-1:0] Dout,
-  input push,
-  input pop,
-  input clk,
-  output reg full,
-  output reg pndng,
-  input rst
-);
-  wire [bits-1:0] q[depth-1:0];
-  reg [$clog2(depth):0] count;
-  reg [bits-1:0] aux_mux [depth-1:0];
-  reg [bits-1:0] aux_mux_or [depth-2:0];
-
-  genvar i;
-  generate
-    for(i=0;i<depth;i=i+1)begin:_dp_
-       if(i==0)begin: _dp2_
-         prll_d_reg #(bits) D_reg(.clk(push),.reset(rst),.D_in(Din),.D_out(q[i]));
-         always@(*)begin
-           aux_mux[i]=(count==i+1)?q[i]:{bits{1'b0}};
-         end    
-       end else begin: _dp3_
-         prll_d_reg #(bits) D_reg(.clk(push),.reset(rst),.D_in(q[i-1]),.D_out(q[i]));
-         always@(*)begin
-           aux_mux[i]=(count==i+1)?q[i]:{bits{1'b0}};
-         end    
-       end
-    end
-  endgenerate
-
-  generate
-  for(i=0;i<depth-2;i=i+1)begin:_nu_
-    always@(*)begin
-      aux_mux_or[i]=aux_mux[i] | aux_mux_or[i+1];
-    end
-  end
-  endgenerate
-
-  always@(*)begin
-    aux_mux_or[depth-2] = aux_mux [depth-1]|aux_mux[depth-2];
-    Dout=aux_mux_or[0];  
-  end
-
-  always@(posedge clk)begin
-  if(rst) begin
-    count <= 0;
-  end else begin
-  
-    case({push,pop})
-      2'b00: count <= count;
-      2'b01: begin
-        if(count == 0) begin
-          count <= 0;
-        end else begin
-          count <=count - 1;
-        end
-      end
-      2'b10:begin
-         if(count == depth)begin
-           count <= count;
-         end else begin
-           count <= count+1;
-        end
-      end
-      2'b11: count <= count;
-    endcase
-  end
-  pndng <= (count==0)?{1'b0}:{1'b1};
-  full <=(count == depth)?{1'b1}:{1'b0};
-end
-endmodule
+//////////////////////////////////////////////////////////////////////////////////////////////////
+// FIFO GENÉRICA:                                                                               //
+// Este es el DUT (Device Under Test). Es una memoria de tipo First-In, First-Out síncrona      //
+// con soporte para operaciones simultáneas (Bypass) y parámetros configurables.                //
+//////////////////////////////////////////////////////////////////////////////////////////////////
 
 module fifo_generic #(
-  parameter  DataWidth = 32,
-  parameter  Depth     = 8,
-  localparam PtrWidth  = $clog2(Depth)
-) (
-  input  logic                 clk,
-  input  logic                 rst,
-  input  logic                 writeEn,
-  input  logic [DataWidth-1:0] writeData,
-  input  logic                 readEn,
-  output logic [DataWidth-1:0] readData,
-  output logic                 full,
-  output logic                 pndng
+    parameter DataWidth = 16, // Ancho de la palabra de datos
+    parameter Depth     = 8   // Capacidad máxima de la FIFO
+)(
+    input  logic [DataWidth-1:0] writeData, // Bus de entrada de datos
+    output logic [DataWidth-1:0] readData,  // Bus de salida de datos
+    input  logic                 writeEn,   // Habilitador de escritura (Push)
+    input  logic                 readEn,    // Habilitador de lectura (Pop)
+    input  logic                 clk,       // Señal de reloj global
+    input  logic                 rst,       // Reset asíncrono activo en alto
+    output logic                 full,      // Bandera de FIFO llena
+    output logic                 pndng      // Bandera de dato pendiente (No vacía)
 );
 
-  logic [DataWidth-1:0] mem[Depth];
-  logic [PtrWidth:0] wrPtr, wrPtrNext;
-  logic [PtrWidth:0] rdPtr, rdPtrNext;
-  logic empty;
-  always_comb begin
-    wrPtrNext = wrPtr;
-    rdPtrNext = rdPtr;
-    if (writeEn) begin
-      wrPtrNext = wrPtr + 1;
-    end
-    if (readEn) begin
-      rdPtrNext = rdPtr + 1;
-    end
-  end
+    // --- Memoria Interna y Punteros ---
+    logic [DataWidth-1:0] mem [Depth-1:0]; // Matriz de memoria (Registros)
+    logic [$clog2(Depth):0] wr_ptr;        // Puntero de escritura
+    logic [$clog2(Depth):0] rd_ptr;        // Puntero de lectura
+    logic [$clog2(Depth):0] count;         // Contador de elementos presentes en la FIFO
 
-  always_ff @(posedge clk or posedge rst) begin
-    if (rst) begin
-      wrPtr <= '0;
-      rdPtr <= '0;
-    end else begin
-      wrPtr <= wrPtrNext;
-      rdPtr <= rdPtrNext;
+    // --- Lógica de Salida (Lectura Combinacional) ---
+    // Implementa el modo "First-Word Fall Through" o Bypass:
+    // 1. Si hay datos (count > 0), muestra lo que apunta rd_ptr.
+    // 2. Si está vacía pero se está escribiendo (Bypass), el dato pasa directo de entrada a salida.
+    // 3. Si no hay nada, la salida es cero.
+    assign readData = (count > 0) ? mem[rd_ptr] : (writeEn ? writeData : '0);
+
+    // --- Lógica Secuencial (Control de Punteros y Memoria) ---
+    always_ff @(posedge clk or posedge rst) begin
+        if (rst) begin
+            // Reset de todos los registros internos
+            wr_ptr <= 0;
+            rd_ptr <= 0;
+            count  <= 0;
+            for (int i = 0; i < Depth; i++) mem[i] <= '0;
+        end else begin
+            
+            // 1. Lógica de Escritura
+            // Si se solicita escribir y la FIFO no está llena, guarda el dato y avanza el puntero.
+            if (writeEn && !full) begin
+                mem[wr_ptr] <= writeData;
+                wr_ptr <= (wr_ptr == Depth-1) ? 0 : wr_ptr + 1;
+            end
+
+            // 2. Lógica de Lectura
+            // Se avanza el puntero si se pide lectura Y (hay datos O se está haciendo bypass).
+            if (readEn && (count > 0 || writeEn)) begin
+                rd_ptr <= (rd_ptr == Depth-1) ? 0 : rd_ptr + 1;
+            end
+
+            // 3. Gestión del Contador de Ocupación
+            // Determina si el número de elementos sube, baja o se mantiene.
+            case ({ (writeEn && !full), (readEn && (count > 0 || writeEn)) })
+                2'b10: count <= count + 1;             // Solo escritura: aumenta
+                2'b01: count <= (count > 0) ? count - 1 : 0; // Solo lectura: disminuye
+                default: count <= count;               // 00 (nada) o 11 (E/L simultánea): se mantiene
+            endcase
+        end
     end
-    if (writeEn) begin
-      mem[wrPtr[PtrWidth-1:0]] <= writeData;
-    end
-  end
 
-  assign readData = mem[rdPtr[PtrWidth-1:0]];
+    // --- Banderas de Estado ---
+    assign full  = (count == Depth);           // Llena cuando el contador alcanza el límite
+    assign pndng = (count > 0) || writeEn;    // Hay datos pendientes si hay contenido o un bypass
 
-  assign empty = (wrPtr[PtrWidth] == rdPtr[PtrWidth]) && (wrPtr[PtrWidth-1:0] == rdPtr[PtrWidth-1:0]);
-  assign full  = (wrPtr[PtrWidth] != rdPtr[PtrWidth]) && (wrPtr[PtrWidth-1:0] == rdPtr[PtrWidth-1:0]);
-  assign pndng = !empty;
+endmodule
 
+//////////////////////////////////////////////////////////////////////////////////////////////////
+// Módulos Auxiliares (Legacy):                                                                 //
+// Estos bloques se mantienen por compatibilidad estructural con diseños previos.               //
+//////////////////////////////////////////////////////////////////////////////////////////////////
+
+// Flip-Flop tipo D con reset asíncrono
+module dff_async_rst (input data, clk, reset, output reg q);
+    always @ (posedge clk or posedge reset) 
+        if (reset) q <= 0; 
+        else q <= data;
+endmodule
+
+// Registro paralelo de N bits construido a partir de dff_async_rst
+module prll_d_reg #(parameter bits = 32)(
+    input clk, 
+    input reset, 
+    input [bits-1:0] D_in, 
+    output [bits-1:0] D_out
+);
+    genvar i; 
+    generate 
+        for(i = 0; i < bits; i=i+1) begin:bit_ 
+            dff_async_rst ff(.data(D_in[i]), .clk(clk), .reset(reset), .q(D_out[i])); 
+        end 
+    endgenerate
 endmodule
