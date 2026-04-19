@@ -1,107 +1,229 @@
-# 📌 Entorno de Verificación FIFO (SystemVerilog)
+# Proyecto FIFO - Verificación con SystemVerilog
 
-## Descripción General
+## 1. Introducción
 
-Este proyecto implementa un entorno de verificación funcional para una FIFO síncrona utilizando SystemVerilog, basado en una arquitectura tipo **Layered Testbench** con enfoque modular.
+Este proyecto desarrolla un entorno de verificación funcional para una FIFO síncrona, evolucionando desde un testbench básico hacia una arquitectura alineada con metodologías modernas de verificación (Layered Testbench).
 
-El objetivo es validar el comportamiento del DUT bajo escenarios funcionales, aleatorios y de estrés, utilizando técnicas de verificación modernas como:
+El objetivo principal es mejorar la **modularidad, escalabilidad y observabilidad del diseño**, incorporando técnicas como:
 
-- Generación de estímulos constrained-random 
-- Modelo de referencia (Golden Model) 
-- Comunicación basada en mailboxes 
-- Observación tipo black-box 
-- Configuración dinámica mediante plusargs 
+- Verificación aleatoria restringida (Constrained Random Verification)
+- Arquitectura por capas (Driver, Monitor, Checker, Scoreboard)
+- Configuración dinámica mediante plusargs
+- Separación clara entre generación, estímulo y verificación
 
-## 🔁 Flujo de Verificación
-Agregar imagen
+Esto permite pasar de un entorno estático a uno capaz de ejecutar escenarios complejos de estrés, corner cases y validación funcional robusta.
 
-Este flujo separa claramente la generación de estímulos, la interacción con el DUT y la verificación, permitiendo mayor escalabilidad y mantenibilidad.
+---
 
-## ⚙️ DUT: FIFO
+## 2. Descripción del DUT (FIFO)
 
-La FIFO es un bloque síncrono parametrizable que implementa política **First-In First-Out**, optimizado para entornos de alta concurrencia.
+La FIFO (First In - First Out) es un bloque síncrono que almacena datos respetando el orden de llegada.
 
-### Características principales:
-- Memoria circular indexada (escalable)
-- Punteros de lectura/escritura
-- Contador de ocupación (count)
+### Evolución del diseño
+
+La versión inicial basada en flip-flops individuales presentaba limitaciones importantes:
+
+- Baja escalabilidad (crecimiento manual del hardware)
+- Latencia elevada por ausencia de bypass
+- Complejidad en el control de estados full/empty
+
+### Arquitectura mejorada
+
+El diseño optimizado introduce mejoras estructurales clave:
+
+- Memoria circular con punteros (`rd_ptr`, `wr_ptr`)
+- Contador interno de ocupación (`count`)
 - Soporte FWFT (First Word Fall Through)
-- Operaciones simultáneas de lectura/escritura
+- Operaciones simultáneas de lectura y escritura
 
-### Mejoras respecto a implementación base:
-- Eliminación de arquitectura basada en flip-flops individuales
-- Reducción de latencia mediante lógica de bypass
-- Flags full/empty más robustas basadas en ocupación real
-- Mejor comportamiento bajo condiciones de estrés
+Esto reduce latencia, mejora el uso de recursos y facilita la síntesis en FPGA/ASIC.
 
-## 🧩 Arquitectura del Testbench
+---
 
-### 🔹 Test
-Define la estrategia de verificación y configuración del entorno:
-- Selección de escenarios mediante plusargs
-- Control de tráfico (random, estrés, dirigido)
-- Orquestación del entorno completo
+## 3. Arquitectura del Testbench
 
-### 🔹 Agent
-Generador de estímulos de alto nivel:
-- Transacciones aleatorias restringidas
-- Escenarios configurables
-- Independiente del timing del DUT
+El entorno de verificación sigue una arquitectura Layered Testbench, separando responsabilidades por bloques funcionales.
 
-### 🔹 Driver
-Interfaz física con el DUT:
-- Traducción de transacciones a señales RTL
-- Control sincronizado por reloj
-- Soporte de operaciones concurrentes
+---
 
-### 🔹 Monitor
-Observador pasivo del DUT:
-- Captura señales directamente del hardware
-- Genera transacciones de salida
-- Permite verificación tipo black-box
+### 3.1 Test (Control de simulación)
 
-### 🔹 Checker
-Motor de verificación funcional:
-- Modelo de referencia (Golden Model)
-- Comparación entre esperado vs real
-- Cálculo de latencia por transacción
+El Test define el comportamiento global de la simulación y los escenarios de verificación.
+
+Sus responsabilidades principales son:
+
+- Configuración dinámica mediante plusargs
+- Definición de escenarios (aleatorio, estrés, corner cases)
+- Control del ciclo de vida de la simulación
+
+Además, permite modificar parámetros sin recompilación, lo que habilita flujos de regresión más eficientes.
+
+---
+
+### 3.2 Testbench Top (test_bench.sv)
+
+El Testbench conecta el mundo RTL con el entorno de verificación.
+
+Componentes principales:
+
+- DUT (FIFO)
+- Interface física (`fifo_if`)
+- Clase Test
+- Generador de reloj
+
+Su función es:
+
+- Instanciar y conectar el DUT
+- Distribuir interfaces virtuales
+- Generar clock y reset
+- Controlar ejecución global
+
+---
+
+### 3.3 Ambiente (Environment)
+
+El Environment integra todos los componentes del sistema.
+
+Funciona como núcleo de coordinación:
+
+- Instancia Driver, Monitor, Checker, Scoreboard y Agente
+- Conecta mailboxes entre bloques
+- Ejecuta procesos en paralelo (`fork-join_none`)
+
+La mejora clave es la separación total entre generación, observación y verificación, permitiendo arquitectura desacoplada.
+
+---
+
+### 3.4 Agente (Generador de transacciones)
+
+El Agente crea estímulos de alto nivel para la FIFO.
+
+Funciones principales:
+
+- Generación de transacciones aleatorias
+- Uso de constraints para control de tráfico
+- Interpretación de instrucciones del Test
+
+Características destacadas:
+
+- Soporte para saturación controlada
+- Configuración dinámica por plusargs
+- Separación de escenarios por tipo de prueba
+
+---
+
+### 3.5 Driver (Interfaz con el DUT)
+
+El Driver traduce transacciones en señales físicas.
+
+Responsabilidades:
+
+- Control de señales `push`, `pop`, `dato_in`
+- Sincronización con `posedge clk`
+- Manejo de retardo por transacción
+
+Mejoras importantes:
+
+- Soporte de operación simultánea (`write_read`)
+- Limpieza estricta de señales
+- Eliminación de lógica de verificación (solo control físico)
+
+---
+
+### 3.6 Monitor (Observador del DUT)
+
+El Monitor captura el comportamiento real del hardware.
+
+Funciones:
+
+- Muestreo síncrono del DUT
+- Conversión de señales a transacciones
+- Clasificación de operaciones
+
+Mejoras clave:
+
+- Retardo de estabilización para evitar glitches
+- Captura consistente de datos combinacionales
+- Arquitectura completamente pasiva
+
+---
+
+### 3.7 Checker (Verificador funcional)
+
+El Checker valida el comportamiento del DUT contra un modelo de referencia.
+
+Funciones principales:
+
+- Modelo Golden Model (cola emulada)
+- Comparación dato a dato
 - Detección de overflow y underflow
+- Cálculo de latencia
 
-### 🔹 Scoreboard
-Módulo de análisis y métricas:
-- Historial de transacciones
+Mejoras:
+
+- Soporte de operaciones simultáneas
+- Manejo de bypass (latencia 0)
+- Validación basada en observación (no en estímulo)
+
+---
+
+### 3.8 Scoreboard (Análisis y métricas)
+
+El Scoreboard centraliza la información de verificación.
+
+Funciones:
+
 - Cálculo de latencia promedio
-- Reportes de rendimiento
-- Estadísticas de simulación
+- Registro histórico de transacciones
+- Generación de reportes
 
-## 🚀 Características del entorno
+Mejoras relevantes:
 
-- Arquitectura modular y escalable 
-- Separación estricta de responsabilidades 
-- Verificación basada en observación (black-box) 
-- Generación constrained-random de estímulos 
-- Configuración en tiempo de ejecución (plusargs) 
-- Soporte de tráfico concurrente y estrés 
+- Ejecución concurrente (no bloqueante)
+- Acceso no destructivo a datos
+- Mayor precisión numérica
 
-## 📊 Mejoras respecto a la versión original
+---
 
-- Se introduce Monitor independiente (observación real del DUT)
-- Checker basado en Golden Model en lugar de comparación directa con Driver
-- Desacoplamiento completo entre generación y verificación
-- Scoreboard con análisis estadístico real
-- Soporte de operaciones simultáneas (read/write en mismo ciclo)
-- Mayor robustez en escenarios de estrés
+## 4. Definiciones globales e interfaces
 
-## 🎯 Objetivos de verificación
+Este módulo define la base estructural del sistema de verificación.
 
-- Validar funcionalidad correcta de la FIFO
-- Verificar comportamiento en condiciones de saturación (full/empty)
-- Medir latencia real de transacciones
-- Detectar errores de sincronización y concurrencia
-- Aumentar cobertura mediante estímulos aleatorios
+Incluye:
 
-## 📌 Conclusión
+- Tipos de transacción (`read`, `write`, `reset`, `write_read`)
+- Clase `trans_fifo`
+- Interface `fifo_if`
 
-Este entorno implementa una metodología de verificación funcional moderna para FIFO, combinando arquitectura modular, modelo de referencia y observación directa del DUT.
+Características importantes:
 
-El resultado es un sistema de verificación robusto, escalable y alineado con prácticas utilizadas en entornos industriales de diseño digital.
+- Tipado estricto de mailboxes
+- Inclusión de `dato_out` y timestamps
+- Soporte para análisis de latencia
+
+---
+
+## 5. Mejoras generales del proyecto
+
+Las mejoras más importantes del sistema son:
+
+- Arquitectura completamente modular (Layered TB)
+- Observabilidad completa mediante Monitor
+- Separación entre estímulo y verificación
+- Soporte de escenarios de estrés y corner cases
+- Configuración dinámica con plusargs
+
+---
+
+## 6. Conclusión
+
+Este proyecto transforma un entorno básico de simulación en una arquitectura de verificación funcional completa.
+
+El sistema final permite:
+
+- Validación funcional robusta
+- Escalabilidad para futuros diseños
+- Mejor observabilidad del DUT
+- Análisis de rendimiento mediante métricas
+
+En conjunto, representa una evolución hacia metodologías reales de verificación usadas en diseño de hardware profesional.
