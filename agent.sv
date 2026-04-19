@@ -1,79 +1,104 @@
 //////////////////////////////////////////////////////////////////////////////////////////////////
-// Agente/Generador: Este bloque se encarga de generar las secuencias de eventos para el driver //
-// En este ejemplo se generarán 2 tipos de secuencias:                                          //
-//    llenado_vaciado: En esta se genera un número parametrizable de tarnsacciones de lecturas  //
-//                     y escrituras para llenar y vaciar la fifo.                               //
-//    Aleatoria: En esta se generarán transacciones totalmente aleatorias                       //
-//    Específica: en este tipo se generan trasacciones semi específicas para casos esquina      // 
+// Agente / Generador:                                                                          //
+// Este bloque es el "jefe" de tráfico. Se encarga de crear secuencias de datos (transacciones) //
+// y enviarlas al Driver. Puede generar tráfico aleatorio, específico o de llenado/vaciado.     //
 //////////////////////////////////////////////////////////////////////////////////////////////////
 
 class agent #(parameter width = 16, parameter depth = 8);
-  trans_fifo_mbx agnt_drv_mbx;           // Mailbox del agente al driver
-  comando_test_agent_mbx test_agent_mbx; // Mailbox del test al agente
-  int num_transacciones;                 // Número de transacciones para las funciones del agente
-  int max_retardo;                       // retardo máximo en la transacción
-  int ret_spec;                          // retardo específico
-  tipo_trans tpo_spec; 
-  bit [width-1:0] dto_spec;
-  instrucciones_agente instruccion;      // para guardar la última instruccion leída
-  trans_fifo #(.width(width)) transaccion;
+  // --- Canales de comunicación (Mailboxes) ---
+  trans_fifo_mbx agnt_drv_mbx;           // Canal para enviar transacciones al Driver
+  comando_test_agent_mbx test_agent_mbx; // Canal para recibir órdenes desde el Test
+
+  // --- Variables de configuración ---
+  int num_transacciones;                 // Cantidad de paquetes a generar por instrucción
+  int max_retardo;                       // Tiempo máximo de espera entre paquetes
+  int solo_escrituras;                   // Switch controlado por Plusargs (1 = desactiva lecturas)
+  
+  // --- Variables para transacciones específicas (Casos de esquina) ---
+  int ret_spec;                          // Retardo definido manualmente
+  tipo_trans tpo_spec;                   // Tipo (Lectura/Escritura/Reset) definido manualmente
+  bit [width-1:0] dto_spec;              // Dato definido manualmente
+  
+  // --- Objetos de control ---
+  instrucciones_agente instruccion;      // Almacena la orden actual enviada por el Test
+  trans_fifo #(.width(width)) transaccion; // El paquete de datos que se está construyendo
    
+  // --- Constructor: Define valores iniciales por defecto ---
   function new;
-    num_transacciones = 2;
-    max_retardo = 10;
+    this.num_transacciones = 2;
+    this.max_retardo = 10;
+    this.solo_escrituras = 0;            // Por defecto, el ambiente hace lecturas y escrituras
   endfunction
 
+  // --- Tarea Principal: Ejecución del Agente ---
   task run;
-    $display("[%g]  El Agente fue inicializado",$time);
+    $display("[%g]  El Agente fue inicializado", $time);
+    
     forever begin
-      #1
-      if(test_agent_mbx.num() > 0)begin
-        $display("[%g]  Agente: se recibe instruccion",$time);
-        test_agent_mbx.get(instruccion);
+      #1 // Pequeña espera para no saturar el simulador
+      
+      // Revisa si el Test ha enviado una nueva orden al Mailbox
+      if(test_agent_mbx.num() > 0) begin
+        $display("[%g]  Agente: se recibe instruccion", $time);
+        test_agent_mbx.get(instruccion); // Extrae la orden del Mailbox
+        
         case(instruccion)
-          llenado_aleatorio: begin  // Esta instruccion genera num_transacciones escrituras seguidas del mismo número de lecturas
-            for(int i = 0; i < num_transacciones;i++) begin
-              transaccion =new;
+          
+          // ORDEN 1: Llenado aleatorio (Prueba de balance o de saturación)
+          llenado_aleatorio: begin  
+            // --- Fase de Escrituras ---
+            for(int i = 0; i < num_transacciones; i++) begin
+              transaccion = new;                 // Crea un nuevo paquete
               transaccion.max_retardo = max_retardo;
-              transaccion.randomize();
-              tpo_spec = escritura;
-              transaccion.tipo = tpo_spec;
-              transaccion.print("Agente: transacción creada");
-              agnt_drv_mbx.put(transaccion);
+              transaccion.randomize();           // Genera datos aleatorios
+              transaccion.tipo = escritura;      // Fuerza el tipo a ESCRITURA
+              transaccion.print("Agente: transacción creada (WRITE)");
+              agnt_drv_mbx.put(transaccion);     // Envía el paquete al Driver
             end
-            for(int i=0; i<num_transacciones;i++) begin
-              transaccion =new;
-              transaccion.randomize();
-              tpo_spec = lectura;
-              transaccion.tipo = tpo_spec;
-              transaccion.print("Agente: transacción creada");
-              agnt_drv_mbx.put(transaccion);
+            
+            // --- Fase de Lecturas (Solo si el Plusarg no lo prohíbe) ---
+            if (!solo_escrituras) begin
+              for(int i = 0; i < num_transacciones; i++) begin
+                transaccion = new; 
+                transaccion.max_retardo = max_retardo; 
+                transaccion.randomize();
+                transaccion.tipo = lectura;      // Fuerza el tipo a LECTURA
+                transaccion.print("Agente: transacción creada (READ)");
+                agnt_drv_mbx.put(transaccion);   // Envía el paquete al Driver
+              end
             end
           end
-          trans_aleatoria: begin  // Esta instrucción genera una transaccion aleatoria
-            transaccion =new;
+
+          // ORDEN 2: Una sola transacción 100% aleatoria
+          trans_aleatoria: begin  
+            transaccion = new;
             transaccion.max_retardo = max_retardo;
             transaccion.randomize();
             transaccion.print("Agente: transacción creada");
             agnt_drv_mbx.put(transaccion);
           end
-          trans_especifica: begin  // Esta instrucción genera una transacción específica
-            transaccion =new;
+
+          // ORDEN 3: Transacción con datos manuales (Para probar valores exactos)
+          trans_especifica: begin  
+            transaccion = new;
             transaccion.tipo = tpo_spec;
             transaccion.dato = dto_spec;
             transaccion.retardo = ret_spec;
             transaccion.print("Agente: transacción creada");
             agnt_drv_mbx.put(transaccion);
           end
-          sec_trans_aleatorias: begin // Esta instrucción genera una secuencia de instrucciones aleatorias
-            for(int i=0; i<num_transacciones;i++) begin
-            transaccion =new;
-            transaccion.max_retardo = max_retardo;
-            transaccion.randomize();
-            transaccion.print("Agente: transacción creada");
-            agnt_drv_mbx.put(transaccion);
+
+          // ORDEN 4: Secuencia de múltiples transacciones aleatorias
+          sec_trans_aleatorias: begin 
+            for(int i = 0; i < num_transacciones; i++) begin
+              transaccion = new;
+              transaccion.max_retardo = max_retardo;
+              transaccion.randomize();
+              transaccion.print("Agente: transacción creada");
+              agnt_drv_mbx.put(transaccion);
             end
           end
+          
         endcase
       end
     end
