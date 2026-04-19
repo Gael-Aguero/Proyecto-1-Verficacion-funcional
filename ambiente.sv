@@ -1,63 +1,67 @@
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Ambiente: este módulo es el encargado de conectar todos los elementos del ambiente para que puedan ser usados por el test //
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////////
+// Ambiente:                                                                                    //
+// Este módulo actúa como el contenedor principal. Su función es instanciar todos los           //
+// componentes de verificación (Driver, Monitor, Checker, etc.) y establecer los canales de     //
+// comunicación (Mailboxes) entre ellos para que el Test pueda controlarlos.                    //
+//////////////////////////////////////////////////////////////////////////////////////////////////
 
-class ambiente #(parameter width =16, parameter depth = 8);
-  // Declaración de los componentes del ambiente
-  driver #(.width(width)) driver_inst;
-  monitor #(.width(width)) monitor_inst;
-  checker_c #(.width(width),.depth(depth)) checker_inst;
-  score_board #(.width(width)) scoreboard_inst;
-  agent #(.width(width),.depth(depth)) agent_inst;
-  
-  // Declaración de la interface que conecta el DUT 
-  virtual fifo_if  #(.width(width)) _if;
+class ambiente #(parameter width = 16, parameter depth = 8);
+  // --- Instancias de los componentes del modelo estándar ---
+  driver #(.width(width)) driver_inst;           // Empuja datos al DUT
+  monitor #(.width(width)) monitor_inst;         // Observa las salidas del DUT
+  checker_c #(.width(width),.depth(depth)) checker_inst; // Valida la lógica
+  score_board #(.width(width)) scoreboard_inst;  // Lleva estadísticas y reportes
+  agent #(.width(width),.depth(depth)) agent_inst; // Genera las secuencias
 
-  //declaración de los mailboxes
-  trans_fifo_mbx agnt_drv_mbx;           //mailbox del agente al driver
-  trans_fifo_mbx mon_chkr_mbx;           //mailbox del monitor al checher
-  trans_sb_mbx chkr_sb_mbx;              //mailbox del checker al scoreboard
-  comando_test_sb_mbx test_sb_mbx;       //mailbox del test al scoreboard
-  comando_test_agent_mbx test_agent_mbx; //mailbox del test al agente
+  // --- Interfaz Virtual ---
+  // Es el puente físico/lógico hacia las señales de la FIFO
+  virtual fifo_if #(.width(width)) _if;
 
+  // --- Declaración de los Mailboxes (Canales de comunicación) ---
+  trans_fifo_mbx agnt_drv_mbx;           // Comunicación: Agente -> Driver
+  trans_fifo_mbx mon_chkr_mbx;           // Comunicación: Monitor -> Checker
+  trans_sb_mbx chkr_sb_mbx;              // Comunicación: Checker -> Scoreboard
+  comando_test_sb_mbx test_sb_mbx;       // Comunicación: Test -> Scoreboard
+  comando_test_agent_mbx test_agent_mbx; // Comunicación: Test -> Agente
+
+  // --- Constructor: Creación y conexión inicial ---
   function new();
-    // Instanciación de los mailboxes
+    // 1. Instanciación de los mailboxes internos
     mon_chkr_mbx   = new();
     agnt_drv_mbx   = new();
     chkr_sb_mbx    = new();
-    
-    ///test_sb_mbx    = new(); Los quite porque esto lo controla el test no el ambiente
-    ///test_agent_mbx = new();
 
-    // instanciación de los componentes del ambiente
+    // 2. Instanciación de cada componente del ambiente
     driver_inst     = new();
-    monitor_inst     = new();
+    monitor_inst    = new();
     checker_inst    = new();
     scoreboard_inst = new();
     agent_inst      = new();
-    // conexion de las interfaces y mailboxes en el ambiente
-    ///driver_inst.vif             = _if;
-    ///monitor_inst.vif             = _if; //agregando esta instancia para el monitor
+
+    // 3. Conexión de Mailboxes entre componentes
+    // Nota: Los mailboxes del Test se conectan en el 'run' o vía el constructor del Test
     monitor_inst.mon_chkr_mbx    = mon_chkr_mbx;
-    driver_inst.agnt_drv_mbx    = agnt_drv_mbx;
-    checker_inst.mon_chkr_mbx   = mon_chkr_mbx;
-    checker_inst.chkr_sb_mbx    = chkr_sb_mbx;
-    scoreboard_inst.chkr_sb_mbx = chkr_sb_mbx;
-    ///scoreboard_inst.test_sb_mbx = test_sb_mbx;
-    ///agent_inst.test_agent_mbx   = test_agent_mbx;
-    agent_inst.agnt_drv_mbx = agnt_drv_mbx;
+    driver_inst.agnt_drv_mbx     = agnt_drv_mbx;
+    checker_inst.mon_chkr_mbx    = mon_chkr_mbx;
+    checker_inst.chkr_sb_mbx     = chkr_sb_mbx;
+    scoreboard_inst.chkr_sb_mbx  = chkr_sb_mbx;
+    agent_inst.agnt_drv_mbx      = agnt_drv_mbx;
   endfunction
 
+  // --- Tarea Run: Puesta en marcha del ambiente ---
   virtual task run();
-    $display("[%g]  El ambiente fue inicializado",$time);
+    $display("[%g]  El ambiente fue inicializado", $time);
 
+    // Conexión de la interfaz virtual a los componentes que tocan señales físicas
     driver_inst.vif = _if;
     monitor_inst.vif = _if;
 
+    // Conexión de los mailboxes de control que vienen desde el Test
     scoreboard_inst.test_sb_mbx = test_sb_mbx;
     agent_inst.test_agent_mbx   = test_agent_mbx;
 
-
+    // Ejecución en paralelo de todos los componentes
+    // join_none permite que el test siga ejecutándose mientras los componentes corren
     fork
       driver_inst.run();
       monitor_inst.run();
@@ -67,4 +71,3 @@ class ambiente #(parameter width =16, parameter depth = 8);
     join_none
   endtask 
 endclass
-
