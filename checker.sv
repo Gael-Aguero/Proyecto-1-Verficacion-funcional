@@ -1,150 +1,124 @@
-//////////////////////////////////////////////////////////////////////////////////////////////////
-// Checker:                                                                                     //
-// Es el componente encargado de validar la integridad de los datos.                            //
-// Mantiene una "FIFO emulada" (cola) para comparar lo que entra con lo que sale y              //
-// reporta los resultados al Scoreboard.                                                        //
-//////////////////////////////////////////////////////////////////////////////////////////////////
-
 class checker_c #(parameter width = 16, parameter depth = 8);
-  // --- Objetos de transacciones ---
-  trans_fifo #(.width(width)) transaccion; // Transacción recibida del Monitor
-  trans_fifo #(.width(width)) auxiliar;    // Para extraer datos de la cola emulada
-  trans_sb   #(.width(width)) to_sb;       // Paquete de reporte para el Scoreboard
-  
-  // --- FIFO Emulada (Modelo de referencia) ---
-  trans_fifo  emul_fifo[$];                // Cola que imita el comportamiento del hardware
-  
-  // --- Canales de comunicación (Mailboxes) ---
-  trans_fifo_mbx mon_chkr_mbx;             // Entrada desde el Monitor
-  trans_sb_mbx  chkr_sb_mbx;               // Salida hacia el Scoreboard
-  
-  int contador_auxiliar;                   // Útil para limpiar la FIFO en resets
 
-  // --- Constructor: Inicializa la cola vacía ---
+  //  Transacciones de entrada y auxiliares
+  trans_fifo #(.width(width)) transaccion;   // transacción recibida del monitor
+  trans_fifo #(.width(width)) auxiliar;      // para comparar en lecturas
+  trans_sb   #(.width(width)) to_sb;         // objeto que se envía al scoreboard
+  
+  //  FIFO emulado (modelo de referencia)
+  trans_fifo  emul_fifo[$];                  // cola dinámica que simula el FIFO ideal
+  
+  //  Mailboxes de comunicación
+  trans_fifo_mbx mon_chkr_mbx;               // monitor → checker
+  trans_sb_mbx  chkr_sb_mbx;                 // checker → scoreboard
+  
+  int contador_auxiliar;                     // usado en reset para vaciar la cola
+
+  //  Constructor
   function new();
-    this.emul_fifo = {};
+    this.emul_fifo = {};                    // inicializa FIFO vacío
     this.contador_auxiliar = 0;
   endfunction 
 
-  // --- Tarea Principal: Validación continua ---
+  //  Proceso principal del checker
   task run;
     $display("[%g] El checker fue inicializado", $time);
     
     forever begin
-      to_sb = new();
-      // 1. Recibe el reporte del Monitor
-      mon_chkr_mbx.get(transaccion);
-      transaccion.print("Checker: Se recibe transacción desde el monitor");
-      to_sb.clean();
+      to_sb = new();                        // crea nuevo objeto para scoreboard
+      mon_chkr_mbx.get(transaccion);        // recibe transacción del monitor
+      to_sb.clean();                        // limpia valores previos
       
-      // 2. Analiza el tipo de operación capturada
+      // DEBUG: Mostrar tamaño de FIFO emulada
+      // $display("[%g] CHECKER DEBUG: FIFO size=%0d, tipo=%s", $time, emul_fifo.size(), transaccion.tipo);
+      
       case(transaccion.tipo)
         
-        // --- CASO LECTURA ---
+        //  CASO: LECTURA
         lectura: begin
-          if(emul_fifo.size() > 0) begin
-            // Si hay datos, extrae el más antiguo y compara
-            auxiliar = emul_fifo.pop_front();
+          if(emul_fifo.size() > 0) begin    // si hay datos en el FIFO emulado
+            auxiliar = emul_fifo.pop_front(); // saca el dato esperado
+            
+            //  DEBUG: Comparación
+            // $display("[%g] CHECKER: Esperado=%h, Recibido=%h", $time, auxiliar.dato, transaccion.dato_out);
+            
+            //  Comparación dato esperado vs recibido
             if(transaccion.dato_out == auxiliar.dato) begin
               to_sb.dato_enviado = auxiliar.dato;
               to_sb.tiempo_push = auxiliar.tiempo;
               to_sb.tiempo_pop = transaccion.tiempo;
               to_sb.completado = 1;
-              to_sb.calc_latencia();
-              to_sb.print("Checker: Transaccion Completada");
-              chkr_sb_mbx.put(to_sb);
+              to_sb.calc_latencia();        // calcula latencia
+              chkr_sb_mbx.put(to_sb);       // envía resultado al scoreboard
             end else begin
-              // ERROR: El dato que salió del hardware no es el que esperábamos
-              $error("Dato_leido=%h, Dato_Esperado=%h", transaccion.dato_out, auxiliar.dato);
+              //  Error de datos
+              $error("ERROR en [%g]: esperado=%h recibido=%h", $time, auxiliar.dato, transaccion.dato_out);
               $finish;
             end
           end else begin
-            // Si intenta leer y está vacía, reporta Underflow
-            to_sb.tiempo_pop = transaccion.tiempo;
+            //  Underflow: lectura sin datos
+            to_sb.clean();                   // 🔧 LIMPIAR ANTES DE USAR
             to_sb.underflow = 1;
-            to_sb.print("Checker: Underflow");
+            to_sb.tiempo_pop = transaccion.tiempo;  // Registrar cuando ocurrió
             chkr_sb_mbx.put(to_sb);
+            $display("[%g] CHECKER: UNDERFLOW detectado en lectura", $time);
           end
         end
         
-        // --- CASO ESCRITURA ---
+        // CASO: ESCRITURA
         escritura: begin
           if(emul_fifo.size() == depth) begin
-            // Si está llena y se intenta escribir, reporta Overflow
-            auxiliar = emul_fifo.pop_front();
-            to_sb.dato_enviado = auxiliar.dato;
-            to_sb.tiempo_push = auxiliar.tiempo;
-            to_sb.overflow = 1;
-            to_sb.print("Checker: Overflow");
-            chkr_sb_mbx.put(to_sb);
-          end
-          // Guarda el dato en la FIFO emulada para futuras comparaciones
-          emul_fifo.push_back(transaccion);
-          transaccion.print("Checker: Escritura");
-        end
-        
-        // --- CASO SIMULTÁNEO (Escritura y Lectura al mismo tiempo) ---
-        escritura_lectura: begin
-          $display("[%t] Checker: Procesando escritura_lectura_simultanea", $time);
-          
-          if(emul_fifo.size() == 0) begin
-            // SUB-CASO: BYPASS (FIFO vacía, el dato entra y sale de inmediato)
-            $display("[%t] Checker: SIMULTÁNEA en FIFO vacía - BYPASS", $time);
-            transaccion.dato_out = transaccion.dato;
-            
-            to_sb.dato_enviado = transaccion.dato;
-            to_sb.tiempo_push = transaccion.tiempo;
-            to_sb.tiempo_pop = transaccion.tiempo;
-            to_sb.completado = 1;
-            to_sb.latencia = 0; 
-            to_sb.print("Checker: BYPASS detectado");
-            chkr_sb_mbx.put(to_sb);
-          end 
-          else if(emul_fifo.size() == depth) begin
-            // SUB-CASO: FULL (Se lee el antiguo, pero el nuevo no entra)
-            $display("[%t] Checker: SIMULTÁNEA en FIFO llena - solo LECTURA", $time);
-            auxiliar = emul_fifo.pop_front();
-            to_sb.dato_enviado = auxiliar.dato;
-            to_sb.tiempo_push = auxiliar.tiempo;
-            to_sb.tiempo_pop = transaccion.tiempo;
-            to_sb.completado = 1;
-            to_sb.calc_latencia();
-            chkr_sb_mbx.put(to_sb);
-          end
-          else begin
-            // SUB-CASO: NORMAL (Se lee el viejo y se guarda el nuevo)
-            auxiliar = emul_fifo.pop_front();
-            emul_fifo.push_back(transaccion);
-            
-            to_sb.dato_enviado = auxiliar.dato;
-            to_sb.tiempo_push = auxiliar.tiempo;
-            to_sb.tiempo_pop = transaccion.tiempo;
-            to_sb.completado = 1;
-            to_sb.calc_latencia();
-            chkr_sb_mbx.put(to_sb);
-          end
-        end
-        
-        // --- CASO RESET ---
-        reset: begin
-          // Limpia la FIFO emulada y reporta las transacciones como perdidas
-          contador_auxiliar = emul_fifo.size();
-          for(int i = 0; i < contador_auxiliar; i++) begin
-            auxiliar = emul_fifo.pop_front();
+            //  Overflow: FIFO lleno
             to_sb.clean();
-            to_sb.dato_enviado = auxiliar.dato; 
-            to_sb.tiempo_push = auxiliar.tiempo;
+            to_sb.overflow = 1;
+            to_sb.dato_enviado = transaccion.dato;  // Registrar qué dato se perdió
+            to_sb.tiempo_push = transaccion.tiempo;
+            chkr_sb_mbx.put(to_sb);
+            $display("[%g] CHECKER: OVERFLOW detectado - dato=0x%h no se pudo escribir", $time, transaccion.dato);
+          end else begin
+            //  Inserta dato en FIFO emulado
+            emul_fifo.push_back(transaccion);
+            // $display("[%g] CHECKER: Escritura exitosa - dato=0x%h, FIFO size=%0d", $time, transaccion.dato, emul_fifo.size());
+          end
+        end
+        
+        //  CASO: RESET
+        reset: begin
+          contador_auxiliar = emul_fifo.size(); // guarda tamaño actual
+        reset: begin
+  contador_auxiliar = emul_fifo.size();
+  
+  if(contador_auxiliar > 0) begin  // 🔧 Solo reportar si hay datos perdidos
+    $display("[%g] CHECKER: RESET detectado - se pierden %0d datos", $time, contador_auxiliar);
+    
+    for(int i = 0; i < contador_auxiliar; i++) begin
+      auxiliar = emul_fifo.pop_front();
+      to_sb.clean();
+      to_sb.reset = 1;
+      to_sb.dato_enviado = auxiliar.dato;
+      to_sb.tiempo_push = auxiliar.tiempo;
+      to_sb.tiempo_pop = $time;
+      chkr_sb_mbx.put(to_sb);
+    end
+  end else begin
+    $display("[%g] CHECKER: RESET detectado - FIFO ya estaba vacía", $time);
+    // 🔧 NO enviar transacción si no hay datos perdidos
+  end
+end //si no había datos, igual notificar el reset
+          if(contador_auxiliar == 0) begin
+            to_sb.clean();
             to_sb.reset = 1;
-            to_sb.print("Checker: Reset - Transaccion perdida");
             chkr_sb_mbx.put(to_sb);
           end
         end
         
+        //  CASO: ERROR
         default: begin
-          $display("[%g] Checker Error: tipo de transacción no válido", $time);
+          $display("[%g] Checker Error: tipo desconocido %s", $time, transaccion.tipo);
           $finish;
         end
       endcase    
     end
   endtask
+
 endclass

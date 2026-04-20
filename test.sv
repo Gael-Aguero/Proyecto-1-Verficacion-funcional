@@ -1,10 +1,3 @@
-//////////////////////////////////////////////////////////////////////////////////////////////////
-// Test:                                                                                        //
-// Este bloque controla la ejecución de la prueba. Es el nivel más alto de la lógica de         //
-// verificación, encargado de configurar los parámetros, enviar instrucciones a los             //
-// componentes y decidir cuándo termina la simulación.                                          //
-//////////////////////////////////////////////////////////////////////////////////////////////////
-
 class test #(parameter width = 16, parameter depth = 8);
   
   // --- Mailboxes de Control (Salidas del Test) ---
@@ -55,7 +48,6 @@ class test #(parameter width = 16, parameter depth = 8);
   
     // ==========================================================
     // 1. LECTURA DE PLUSARGS (Configuración desde la terminal)
-    // Permite modificar la prueba sin recompilar el código.
     // ==========================================================
     
     // Configuración de retardo máximo
@@ -92,6 +84,9 @@ class test #(parameter width = 16, parameter depth = 8);
       ambiente_inst.run(); // Inicia Driver, Monitor, Checker, etc. en paralelo
     join_none
 
+    // Esperar a que el ambiente esté listo
+    #100;
+  
     // ==========================================================
     // 5. SECUENCIA DE ESTÍMULOS (Plan de Verificación)
     // ==========================================================
@@ -100,20 +95,26 @@ class test #(parameter width = 16, parameter depth = 8);
     instr_agent = llenado_aleatorio;
     test_agent_mbx.put(instr_agent);
     $display("[%g]  Test: Enviada instrucción: LLENADO ALEATORIO (%0d trans)",$time, num_trans_cfg);
+    
+    // Esperar a que se completen las transacciones
+    #500;
 
     // Paso B: Transacción aleatoria individual
     instr_agent = trans_aleatoria;
     test_agent_mbx.put(instr_agent);
     $display("[%g]  Test: Enviada instrucción: TRANSACCIÓN ALEATORIA",$time);
+    
+    #100;
 
     // Paso C: Transacción específica (Caso de esquina manual)
-    // Definimos un dato manual para verificar valores conocidos
     ambiente_inst.agent_inst.ret_spec = 3;
     ambiente_inst.agent_inst.tpo_spec = escritura;
-    ambiente_inst.agent_inst.dto_spec = {width/4{4'h5}}; // Crea un patrón 0x5555...
+    ambiente_inst.agent_inst.dto_spec = {width/4{4'h5}};
     instr_agent = trans_especifica;
     test_agent_mbx.put(instr_agent);
     $display("[%g]  Test: Enviada instrucción: TRANSACCIÓN ESPECÍFICA",$time);
+    
+    #100;
 
     // Paso D: Secuencia masiva de transacciones
     instr_agent = sec_trans_aleatorias;
@@ -123,18 +124,23 @@ class test #(parameter width = 16, parameter depth = 8);
     // ==========================================================
     // 6. CIERRE Y REPORTES FINALIZADOS
     // ==========================================================
-    #10000 // Tiempo de espera para que se procesen los datos
+    
+    #20000;
+    
     $display("[%g]  Test: Se alcanza el tiempo límite de la prueba",$time);
     
     // Pedir reporte de latencia
     instr_sb = retardo_promedio; 
     test_sb_mbx.put(instr_sb);
     
+    //Esperar a que procese el promedio
+    #10;
+    
     // Pedir reporte histórico completo
     instr_sb = reporte;  
     test_sb_mbx.put(instr_sb);
     
-    #20 // Tiempo de cortesía para imprimir
-    $finish; // Finaliza la simulación
+    #50; // Tiempo de cortesía para imprimir
+    $finish;
   endtask
 endclass

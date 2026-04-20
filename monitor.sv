@@ -1,61 +1,82 @@
-//////////////////////////////////////////////////////////////////////////////////////////////////
-// Monitor:                                                                                     //
-// Este bloque es un observador pasivo. No mueve ninguna señal; simplemente "escucha" la        //
-// interfaz y traduce los cambios de voltajes/niveles lógicos en objetos de transacción         //
-// para que el Checker pueda validarlos.                                                        //
-//////////////////////////////////////////////////////////////////////////////////////////////////
-
 class monitor#(parameter width = 16);
-  // --- Interfaz Virtual ---
-  virtual fifo_if #(.width(width)) vif; // Conexión a las señales físicas del DUT
-  
-  // --- Canal de comunicación ---
-  trans_fifo_mbx mon_chkr_mbx;          // Mailbox para enviar lo observado al Checker
 
-  // --- Tarea Principal: Observación continua ---
+  // Interfaz virtual hacia el DUT (FIFO)
+  virtual fifo_if #(.width(width)) vif;
+  
+  // Mailbox para enviar transacciones al checker
+  trans_fifo_mbx mon_chkr_mbx;
+  
+  // Variables para debounce (evitar múltiples detecciones)
+  bit last_push, last_pop, last_rst;
+
   task run();
     $display("[%g] El monitor fue inicializado", $time);
     
+    // Inicializar variables
+    last_push = 0;
+    last_pop = 0;
+    last_rst = 0;
+    
+    //////////////////////////////////////////////////////
+    // LOOP PRINCIPAL DE MONITOREO
+    //////////////////////////////////////////////////////
     forever begin
-      trans_fifo #(.width(width)) transaction;
       
-      // Sincronización con el flanco de reloj
+      //////////////////////////////////////////////////////
+      // SINCRONIZACIÓN CON EL RELOJ
+      //////////////////////////////////////////////////////
       @(posedge vif.clk);
       
-      // RETARDO CRÍTICO (#2):
-      // Se espera un pequeño tiempo después del flanco de reloj para asegurar que 
-      // las señales combinacionales (como dato_out) ya se hayan estabilizado. 
-      // Sin esto, el monitor podría capturar el dato viejo.
-      #2; 
-
-      // 1. Detección de RESET
-      if (vif.rst) begin
+      // 🔧 Pequeño delay para asegurar estabilidad de señales
+      //#1;  // Reducido de 5 a 1 para mejor sincronización
+      
+      //////////////////////////////////////////////////////
+      // DETECCIÓN DE EVENTOS (con detección de flanco)
+      //////////////////////////////////////////////////////
+      
+      //  RESET (detección por flanco positivo)
+      if (vif.rst && !last_rst) begin
+        trans_fifo #(.width(width)) transaction;
         transaction = new();
         transaction.tipo = reset;
         transaction.tiempo = $time;
-        mon_chkr_mbx.put(transaction);
-      end else begin
         
-        // 2. Detección de ESCRITURA (PUSH)
-        if (vif.push) begin
-          transaction = new();
-          transaction.tipo = escritura;
-          transaction.dato = vif.dato_in; // Captura el dato que está entrando
-          transaction.tiempo = $time;
-          mon_chkr_mbx.put(transaction);
-        end 
-
-        // 3. Detección de LECTURA (POP)
-        if (vif.pop) begin
-          transaction = new();
-          transaction.tipo = lectura;
-          transaction.tiempo = $time;
-          // Captura el dato que está saliendo de la FIFO
-          transaction.dato_out = vif.dato_out; 
-          mon_chkr_mbx.put(transaction);
-          void'(transaction.print("Monitor: Lectura detectada"));
-        end
+        $display("[%g] MONITOR: Reset detectado", $time);
+        mon_chkr_mbx.put(transaction);
       end
+      
+      //  ESCRITURA (PUSH) - detección por flanco
+      if (vif.push && !last_push) begin
+        trans_fifo #(.width(width)) transaction;
+        transaction = new();
+        transaction.tipo = escritura;
+        
+        // Captura el dato que entra a la FIFO
+        transaction.dato = vif.dato_in;
+        transaction.tiempo = $time;
+        
+        $display("[%g] MONITOR: Escritura detectada - dato=0x%h", $time, transaction.dato);
+        mon_chkr_mbx.put(transaction);
+      end 
+
+      //  LECTURA (POP) - detección por flanco
+      if (vif.pop && !last_pop) begin
+        trans_fifo #(.width(width)) transaction;
+        transaction = new();
+        transaction.tipo = lectura;
+        transaction.tiempo = $time;
+        
+        // Captura el dato que sale de la FIFO
+        transaction.dato_out = vif.dato_out;
+        
+        $display("[%g] MONITOR: Lectura detectada - dato_out=0x%h", $time, transaction.dato_out);
+        mon_chkr_mbx.put(transaction);
+      end
+      
+      // Actualizar últimos valores
+      last_push = vif.push;
+      last_pop = vif.pop;
+      last_rst = vif.rst;
     end
   endtask
 endclass

@@ -104,3 +104,4 @@ class agent #(parameter width = 16, parameter depth = 8);
     end
   endtask
 endclass
+

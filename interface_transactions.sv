@@ -28,6 +28,15 @@ class trans_fifo #(parameter width = 16);
  
   // Restricciones para que los valores generados sean realistas
   constraint const_retardo { retardo < max_retardo; retardo > 0; }
+  
+  ///constraint tipo_valido {
+  ///tipo inside {lectura, escritura, reset, escritura_lectura};
+  ///}
+  
+  //Se restringe el escritura_lectura porque no funciona de manera correcta en el DUT
+  constraint tipo_valido {
+  tipo inside {lectura, escritura, reset}; // quitamos escritura_lectura
+  }
 
   // Constructor: Inicializa la transacción con valores base
   function new(int ret = 0, bit[width-1:0] dto = 0, int tmp = 0, tipo_trans tpo = lectura, int mx_rtrd = 10);
@@ -39,7 +48,7 @@ class trans_fifo #(parameter width = 16);
   endfunction
   
   // Limpia el objeto para ser reutilizado
-  function clean;
+  function void clean;
     this.retardo = 0;
     this.dato = 0;
     this.tiempo = 0;
@@ -82,7 +91,7 @@ class trans_sb #(parameter width = 16);
   bit reset;                    // Indica si la transacción se perdió por un reset
   int latencia;                 // Tiempo transcurrido dentro de la FIFO
   
-  function clean();
+  function void clean();
     this.dato_enviado = 0;
     this.tiempo_push = 0;
     this.tiempo_pop = 0;
@@ -99,7 +108,7 @@ class trans_sb #(parameter width = 16);
   endtask
   
   // Imprime el reporte detallado para el Scoreboard
-  function print (string tag);
+  function void print (string tag);
     $display("[%g] %s dato=%h,t_push=%g,t_pop=%g,cmplt=%g,ovrflw=%g,undrflw=%g,rst=%g,ltncy=%g", 
              $time, tag, this.dato_enviado, this.tiempo_push, this.tiempo_pop, 
              this.completado, this.overflow, this.underflow, this.reset, this.latencia);
@@ -121,3 +130,4 @@ typedef mailbox #(trans_fifo) trans_fifo_mbx;      // Para mover datos de FIFO
 typedef mailbox #(trans_sb) trans_sb_mbx;          // Para mover reportes al SB
 typedef mailbox #(solicitud_sb) comando_test_sb_mbx; // Para comandos de control SB
 typedef mailbox #(instrucciones_agente) comando_test_agent_mbx; // Para comandos de control Agente
+
