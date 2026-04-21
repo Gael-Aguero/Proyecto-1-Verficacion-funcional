@@ -1,60 +1,64 @@
-FIFO Generic Verification Environment
+# Entorno de Verificación para FIFO Genérico
 
-Integrantes del grupo: Gael Aguero / Kendy Arias
+> Entorno de verificación modular y parametrizado en SystemVerilog para validar una FIFO genérica — construido siguiendo una arquitectura basada en clases inspirada en UVM.
 
-Este proyecto mejora e implementa un entorno de verificación modular y parametrizado en SystemVerilog para validar una FIFO genérica. Utiliza una arquitectura basada en clases, siguiendo principios similares a UVM (Universal Verification Methodology).
+---
 
-📊 Arquitectura del Entorno
+## 📋 Descripción General
 
-El siguiente diagrama muestra la jerarquía de componentes y el flujo de transacciones:
+Este proyecto mejora e implementa un entorno de verificación completamente parametrizado en SystemVerilog para validar un diseño de FIFO genérica. La arquitectura sigue una metodología basada en clases y componentes inspirada en UVM (Universal Verification Methodology), permitiendo una construcción de testbench escalable y reutilizable.
 
--Link:
+---
 
-🚀 Guía de Uso
+## 📊 Arquitectura
 
-El proyecto está diseñado para ejecutarse directamente en simuladores HDL.
+El siguiente diagrama ilustra la jerarquía de componentes y el flujo de transacciones a lo largo del entorno:
 
-Flujo típico:
-Compilar todos los archivos .sv
-Ejecutar el test_bench
-Seleccionar el test deseado en test.sv
+![Diagrama de Flujo](https://github.com/Gael-Aguero/Proyecto-1-Verficacion-funcional/blob/main/Imagenes/DiagramaFlujo%20de%20Modulo.png)
 
-⚙️ El entorno se inicializa automáticamente:
+---
 
-Se construye el ambiente
-Se configuran agentes y componentes
-Se ejecutan transacciones sobre el DUT
+## 🚀 Guía de Uso
 
-Configuración dinámica (Plusargs)
+El proyecto está diseñado para ejecutarse directamente en cualquier simulador HDL con soporte para SystemVerilog.
 
-El testbench permite parametrización sin recompilación:
+### Flujo Típico
 
-+NUM_TRANS → número de transacciones
-+MAX_RETARDO → retardo máximo aleatorio
-+SOLO_ESCRITURAS → fuerza modo escritura
+1. **Compilar** todos los archivos `.sv`
+2. **Ejecutar** el módulo top `test_bench`
+3. **Seleccionar** el caso de prueba deseado dentro de `test.sv`
 
-Ejemplo:
+Una vez iniciado, el entorno se inicializa automáticamente:
 
+- Construye y conecta el entorno de verificación
+- Configura agentes y sub-componentes
+- Genera transacciones sobre el DUT (Device Under Test)
+
+---
+
+## ⚙️ Configuración Dinámica (Plusargs)
+
+El testbench soporta parametrización en tiempo de ejecución sin necesidad de recompilar, mediante plusargs del simulador:
+
+| Plusarg              | Descripción                                  |
+|----------------------|----------------------------------------------|
+| `+NUM_TRANS`         | Número de transacciones a generar            |
+| `+MAX_RETARDO`       | Retardo aleatorio máximo entre operaciones   |
+| `+SOLO_ESCRITURAS`   | Fuerza el modo solo escritura (valor `1`)    |
+
+**Ejemplo de invocación:**
+
+```bash
 +NUM_TRANS=50 +MAX_RETARDO=10 +SOLO_ESCRITURAS=1
+```
 
+---
 
-📂 Documentación Detallada
+## 📂 Documentación
 
-Para un análisis profundo de cada componente, consulte el reporte técnico:
+Para un análisis detallado de cada componente, consulte el reporte técnico completo:
 
-Link:
-
-🛠️ Requisitos
-
-Simulador compatible con SystemVerilog (Questasim, Vivado, ModelSim).
-Soporte para interfaces virtuales
-Soporte para estándares de cronometraje 1ns/1ps.
-
-## 📂 Documentación Detallada
-
-Para un análisis profundo de cada componente, consulte el reporte técnico:
-
-🔗 Link: *(insertar aquí enlace al PDF o repositorio)*
+🔗 **Reporte:** *(insertar aquí el enlace al PDF o repositorio)*
 
 ---
 
@@ -62,4 +66,13 @@ Para un análisis profundo de cada componente, consulte el reporte técnico:
 
 - Simulador compatible con SystemVerilog (QuestaSim / ModelSim / Vivado)
 - Soporte para interfaces virtuales
-- Resolución de tiempo: 1ns / 1ps
+- Resolución de tiempo: `1ns / 1ps`
+
+---
+
+## 👥 Estudiantes
+
+| Nombre        | Rol                        |
+|---------------|----------------------------|
+| Gael Agüero   | Estudiante de Ingeniería Electrónica  |
+| Kendy Arias   | Estudiante de Ingeniería Electrónica  |
