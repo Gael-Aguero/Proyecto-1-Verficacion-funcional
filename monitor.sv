@@ -6,7 +6,7 @@ class monitor#(parameter width = 16);
   // Mailbox para enviar transacciones al checker
   trans_fifo_mbx mon_chkr_mbx;
   
-  // Variables para debounce (evitar múltiples detecciones)
+  // Variables para debounce
   bit last_push, last_pop, last_rst;
 
   task run();
@@ -17,24 +17,12 @@ class monitor#(parameter width = 16);
     last_pop = 0;
     last_rst = 0;
     
-    //////////////////////////////////////////////////////
-    // LOOP PRINCIPAL DE MONITOREO
-    //////////////////////////////////////////////////////
     forever begin
-      
-      //////////////////////////////////////////////////////
-      // SINCRONIZACIÓN CON EL RELOJ
-      //////////////////////////////////////////////////////
       @(posedge vif.clk);
       
-      // 🔧 Pequeño delay para asegurar estabilidad de señales
-      //#1;  // Reducido de 5 a 1 para mejor sincronización
-      
       //////////////////////////////////////////////////////
-      // DETECCIÓN DE EVENTOS (con detección de flanco)
+      // DETECCIÓN DE RESET (prioridad máxima)
       //////////////////////////////////////////////////////
-      
-      //  RESET (detección por flanco positivo)
       if (vif.rst && !last_rst) begin
         trans_fifo #(.width(width)) transaction;
         transaction = new();
@@ -45,28 +33,44 @@ class monitor#(parameter width = 16);
         mon_chkr_mbx.put(transaction);
       end
       
-      //  ESCRITURA (PUSH) - detección por flanco
-      if (vif.push && !last_push) begin
+      //////////////////////////////////////////////////////
+      // DETECCIÓN DE PUSH Y POP SIMULTÁNEO (prioridad alta)
+      //////////////////////////////////////////////////////
+      if (vif.push && vif.pop && (!last_push || !last_pop)) begin
+        trans_fifo #(.width(width)) transaction;
+        transaction = new();
+        transaction.tipo = escritura_lectura;
+        transaction.tiempo = $time;
+        transaction.dato = vif.dato_in;
+        transaction.dato_out = vif.dato_out;
+        
+        $display("[%g] MONITOR: Escritura/Lectura simultánea detectada - dato_in=0x%h, dato_out=0x%h", 
+                 $time, transaction.dato, transaction.dato_out);
+        mon_chkr_mbx.put(transaction);
+      end
+      
+      //////////////////////////////////////////////////////
+      // DETECCIÓN DE ESCRITURA (PUSH) SOLAMENTE
+      //////////////////////////////////////////////////////
+      else if (vif.push && !vif.pop && !last_push) begin
         trans_fifo #(.width(width)) transaction;
         transaction = new();
         transaction.tipo = escritura;
-        
-        // Captura el dato que entra a la FIFO
         transaction.dato = vif.dato_in;
         transaction.tiempo = $time;
         
         $display("[%g] MONITOR: Escritura detectada - dato=0x%h", $time, transaction.dato);
         mon_chkr_mbx.put(transaction);
       end 
-
-      //  LECTURA (POP) - detección por flanco
-      if (vif.pop && !last_pop) begin
+      
+      //////////////////////////////////////////////////////
+      // DETECCIÓN DE LECTURA (POP) SOLAMENTE
+      //////////////////////////////////////////////////////
+      else if (vif.pop && !vif.push && !last_pop) begin
         trans_fifo #(.width(width)) transaction;
         transaction = new();
         transaction.tipo = lectura;
         transaction.tiempo = $time;
-        
-        // Captura el dato que sale de la FIFO
         transaction.dato_out = vif.dato_out;
         
         $display("[%g] MONITOR: Lectura detectada - dato_out=0x%h", $time, transaction.dato_out);

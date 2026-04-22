@@ -6,6 +6,19 @@
 
 `timescale 1ns/1ps
 
+// ==========================================================
+// DEFINICIÓN DE PARÁMETROS DESDE LÍNEA DE COMANDOS
+// ==========================================================
+// Estos valores pueden ser sobreescritos durante la compilación
+// usando +define+WIDTH=<valor> +define+DEPTH=<valor>
+`ifndef WIDTH
+  `define WIDTH 16
+`endif
+
+`ifndef DEPTH
+  `define DEPTH 8
+`endif
+
 // Inclusión de todos los archivos necesarios para el ambiente de verificación
 `include "fifo.sv"
 `include "interface_transactions.sv"
@@ -20,15 +33,15 @@
 module test_bench; 
   // --- Señales de control y parámetros ---
   reg clk;
-  parameter width = 16;
-  parameter depth = 8;
+  parameter width = `WIDTH;
+  parameter depth = `DEPTH;
   
   // Instancia de la clase de prueba (el cerebro de la verificación)
   test #(.depth(depth),.width(width)) t0;
 
   // --- Instancia de la Interfaz ---
   // Conecta el banco de pruebas con las señales físicas del módulo
-  fifo_if  #(.width(width)) _if(.clk(clk));
+  fifo_if #(.width(width)) _if(.clk(clk));
 
   // Generación del Reloj: Período de 10ns (frecuencia de 100MHz)
   always #5 clk = ~clk;
@@ -49,6 +62,14 @@ module test_bench;
   // --- Bloque Inicial: Arranque de la simulación ---
   initial begin
     clk = 0;
+    
+    // Mostrar configuración actual
+    $display("========================================");
+    $display("  CONFIGURACIÓN DEL TESTBENCH");
+    $display("========================================");
+    $display("  WIDTH = %0d bits", width);
+    $display("  DEPTH = %0d palabras", depth);
+    $display("========================================");
     
     // 1. Creación del objeto de prueba
     t0 = new();
