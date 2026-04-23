@@ -36,7 +36,7 @@ module test_bench;
   parameter width = `WIDTH;
   parameter depth = `DEPTH;
   
-  // Instancia de la clase de prueba (el cerebro de la verificación)
+  // Instancia de la clase de prueba 
   test #(.depth(depth),.width(width)) t0;
 
   // --- Instancia de la Interfaz ---
@@ -74,7 +74,7 @@ module test_bench;
     // 1. Creación del objeto de prueba
     t0 = new();
     
-    // 2. Conexión de interfaces (Puntos de control críticos)
+    // 2. Conexión de interfaces 
     // Se asigna la interfaz física a los punteros virtuales del ambiente
     t0._if = _if;
     t0.ambiente_inst._if = _if; 
@@ -88,7 +88,6 @@ module test_bench;
     join_none
   end
  
-  // --- Watchdog (Perro guardián) ---
   // Monitorea el tiempo de simulación para evitar que el proceso se quede 
   // pegado en un bucle infinito si algo falla en el hardware.
   always@(posedge clk) begin

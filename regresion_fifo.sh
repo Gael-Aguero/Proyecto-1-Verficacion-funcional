@@ -4,7 +4,7 @@
 # ============================================================
 
 NUM_TESTS=3
-source /mnt/vol_NFS_rh003/estudiantes/archivos_config/synopsys_tools2.sh;
+source /mnt/vol_NFS_rh003/estudiantes/archivos_config/synopsys_tools2.sh; 
 echo "=========================================="
 echo "  REGRESIÓN FIFO - $NUM_TESTS pruebas"
 echo "=========================================="
@@ -43,7 +43,7 @@ for i in $(seq 1 $NUM_TESTS); do
   
   if [ $? -ne 0 ]; then
     echo ""
-    echo "❌ ERROR: Falló la compilación"
+    echo "ERROR: Falló la compilación"
     echo "Últimas líneas del log de compilación:"
     tail -20 compile.log
     exit 1
@@ -61,13 +61,13 @@ for i in $(seq 1 $NUM_TESTS); do
   
   if [ $? -ne 0 ]; then
     echo ""
-    echo "❌ ERROR: Falló la simulación"
+    echo "ERROR: Falló la simulación"
     echo "Últimas líneas del log de simulación:"
     tail -20 sim_${i}.log
     exit 1
   fi
   
-  echo "  ✓ Simulación exitosa"
+  echo "Simulación exitosa"
   
   # Limpiar archivos de compilación
   rm -rf simv simv.daidir csrc compile.log
@@ -77,6 +77,6 @@ done
 
 echo ""
 echo "=========================================="
-echo "  ✓ REGRESIÓN COMPLETADA EXITOSAMENTE"
+echo "    REGRESIÓN COMPLETADA EXITOSAMENTE"
 echo "  $NUM_TESTS/$NUM_TESTS pruebas pasaron"
 echo "=========================================="

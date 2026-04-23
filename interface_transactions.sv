@@ -8,7 +8,7 @@ typedef enum {
   lectura,           // Pop
   escritura,         // Push
   reset,             // Reinicio del DUT
-  escritura_lectura  // Operación simultánea (Bypass/Corner case)
+  escritura_lectura  // Operación simultánea 
 } tipo_trans; 
 
 //////////////////////////////////////////////////////////////////////////////////////////////////
@@ -122,10 +122,8 @@ typedef enum {retardo_promedio, reporte} solicitud_sb;
 typedef enum {llenado_aleatorio, trans_aleatoria, trans_especifica, sec_trans_aleatorias} instrucciones_agente;
 
 // ==========================================================
-// MAILBOXES SIN PARÁMETROS GENÉRICOS (COMPATIBLE CON VCS)
+// MAILBOXES 
 // ==========================================================
-// NOTA: Se eliminaron los parámetros #(type) para evitar
-// errores de "type mismatch" en VCS estricto.
 
 typedef mailbox trans_fifo_mbx;      // Para mover datos de FIFO
 typedef mailbox trans_sb_mbx;        // Para mover reportes al SB

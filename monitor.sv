@@ -21,7 +21,7 @@ class monitor#(parameter width = 16);
       @(posedge vif.clk);
       
       //////////////////////////////////////////////////////
-      // DETECCIÓN DE RESET (prioridad máxima)
+      // DETECCIÓN DE RESET 
       //////////////////////////////////////////////////////
       if (vif.rst && !last_rst) begin
         trans_fifo #(.width(width)) transaction;
@@ -34,7 +34,7 @@ class monitor#(parameter width = 16);
       end
       
       //////////////////////////////////////////////////////
-      // DETECCIÓN DE PUSH Y POP SIMULTÁNEO (prioridad alta)
+      // DETECCIÓN DE PUSH Y POP SIMULTÁNEO 
       //////////////////////////////////////////////////////
       if (vif.push && vif.pop && (!last_push || !last_pop)) begin
         trans_fifo #(.width(width)) transaction;
@@ -50,7 +50,7 @@ class monitor#(parameter width = 16);
       end
       
       //////////////////////////////////////////////////////
-      // DETECCIÓN DE ESCRITURA (PUSH) SOLAMENTE
+      // DETECCIÓN DE ESCRITURA (PUSH) 
       //////////////////////////////////////////////////////
       else if (vif.push && !vif.pop && !last_push) begin
         trans_fifo #(.width(width)) transaction;
@@ -64,7 +64,7 @@ class monitor#(parameter width = 16);
       end 
       
       //////////////////////////////////////////////////////
-      // DETECCIÓN DE LECTURA (POP) SOLAMENTE
+      // DETECCIÓN DE LECTURA (POP) 
       //////////////////////////////////////////////////////
       else if (vif.pop && !vif.push && !last_pop) begin
         trans_fifo #(.width(width)) transaction;
