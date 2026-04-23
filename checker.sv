@@ -5,8 +5,8 @@ class checker_c #(parameter width = 16, parameter depth = 8);
   trans_fifo #(.width(width)) auxiliar;      // para comparar en lecturas
   trans_sb   #(.width(width)) to_sb;         // objeto que se envía al scoreboard
   
-  //  FIFO emulado (modelo de referencia)
-  trans_fifo  emul_fifo[$];                  // cola dinámica que simula el FIFO ideal
+  //  FIFO emulado (modelo de referencia) - ESPECIFICAR PARÁMETRO
+  trans_fifo #(.width(width)) emul_fifo[$];  // cola dinámica que simula el FIFO ideal
   
   //  Mailboxes de comunicación
   trans_fifo_mbx mon_chkr_mbx;               // monitor → checker
@@ -25,8 +25,14 @@ class checker_c #(parameter width = 16, parameter depth = 8);
     $display("[%g] El checker fue inicializado", $time);
     
     forever begin
+      trans_fifo #(.width(width)) temp_trans;  // Variable temporal del tipo correcto
+      
       to_sb = new();                        // crea nuevo objeto para scoreboard
-      mon_chkr_mbx.get(transaccion);        // recibe transacción del monitor
+      mon_chkr_mbx.get(temp_trans);         // recibe transacción del monitor
+      
+      // Copiar a la variable de clase
+      transaccion = temp_trans;
+      
       to_sb.clean();                        // limpia valores previos
       
       // DEBUG: Mostrar tamaño de FIFO emulada
@@ -79,7 +85,17 @@ class checker_c #(parameter width = 16, parameter depth = 8);
           end else begin
             //  Inserta dato en FIFO emulado
             transaccion.tiempo = $time;  // Marcar tiempo de entrada
-            emul_fifo.push_back(transaccion);
+            
+            // Crear una copia para guardar en la cola
+            trans_fifo #(.width(width)) copy_trans;
+            copy_trans = new();
+            copy_trans.tipo = transaccion.tipo;
+            copy_trans.dato = transaccion.dato;
+            copy_trans.tiempo = transaccion.tiempo;
+            copy_trans.retardo = transaccion.retardo;
+            copy_trans.dato_out = transaccion.dato_out;
+            
+            emul_fifo.push_back(copy_trans);
             $display("[%g] CHECKER: ✓ Escritura exitosa - dato=0x%h, FIFO size=%0d/%0d", $time, transaccion.dato, emul_fifo.size(), depth);
           end
         end
@@ -104,7 +120,6 @@ class checker_c #(parameter width = 16, parameter depth = 8);
             end
           end else begin
             $display("[%g] CHECKER: RESET detectado - FIFO ya estaba vacía", $time);
-            // También reportamos el reset aunque no haya datos
             to_sb.clean();
             to_sb.reset = 1;
             chkr_sb_mbx.put(to_sb);
@@ -116,10 +131,9 @@ class checker_c #(parameter width = 16, parameter depth = 8);
           $display("[%g] CHECKER: Escritura/Lectura simultánea detectada - FIFO size=%0d", $time, emul_fifo.size());
           
           if(emul_fifo.size() == 0) begin
-            // FIFO vacía: el DUT hace bypass - el dato nuevo aparece en la salida
+            // FIFO vacía: bypass
             $display("[%g] CHECKER: FIFO vacía - bypass: dato=0x%h", $time, transaccion.dato);
             
-            // Verificar que el dato leído es el mismo que se escribió (bypass)
             if(transaccion.dato_out === transaccion.dato) begin
               to_sb.dato_enviado = transaccion.dato;
               to_sb.tiempo_push = $time;
@@ -134,10 +148,9 @@ class checker_c #(parameter width = 16, parameter depth = 8);
             chkr_sb_mbx.put(to_sb);
             
           end else if(emul_fifo.size() == depth) begin
-            // FIFO llena: el DUT hace bypass - el dato nuevo sale, el más antiguo se pierde (overflow)
+            // FIFO llena: bypass con overflow
             $display("[%g] CHECKER: FIFO llena - bypass con pérdida del dato más antiguo", $time);
             
-            // El dato más antiguo se pierde (overflow)
             auxiliar = emul_fifo.pop_front();
             to_sb = new();
             to_sb.clean();
@@ -147,7 +160,6 @@ class checker_c #(parameter width = 16, parameter depth = 8);
             chkr_sb_mbx.put(to_sb);
             $display("[%g] CHECKER: ⚠ OVERFLOW - dato antiguo 0x%h se pierde", $time, auxiliar.dato);
             
-            // Verificar que el dato leído es el nuevo (bypass)
             to_sb = new();
             to_sb.clean();
             if(transaccion.dato_out === transaccion.dato) begin
@@ -164,17 +176,23 @@ class checker_c #(parameter width = 16, parameter depth = 8);
             chkr_sb_mbx.put(to_sb);
             
           end else begin
-            // FIFO a medio llenar: comportamiento FIFO normal (NO bypass)
-            // Sale el dato más antiguo, entra el nuevo
+            // FIFO medio llena: comportamiento FIFO normal
             $display("[%g] CHECKER: FIFO medio (%0d/%0d) - comportamiento FIFO normal", $time, emul_fifo.size(), depth);
             
             auxiliar = emul_fifo.pop_front();
-            transaccion.tiempo = $time;
-            emul_fifo.push_back(transaccion);
+            
+            // Insertar nuevo dato
+            trans_fifo #(.width(width)) copy_trans;
+            copy_trans = new();
+            copy_trans.tipo = transaccion.tipo;
+            copy_trans.dato = transaccion.dato;
+            copy_trans.tiempo = $time;
+            copy_trans.retardo = transaccion.retardo;
+            copy_trans.dato_out = transaccion.dato_out;
+            emul_fifo.push_back(copy_trans);
             
             $display("[%g] CHECKER: FIFO medio - dato_sale=0x%h, dato_entra=0x%h", $time, auxiliar.dato, transaccion.dato);
             
-            // Verificar que el dato leído es el más antiguo
             if(transaccion.dato_out === auxiliar.dato) begin
               to_sb.dato_enviado = auxiliar.dato;
               to_sb.tiempo_push = auxiliar.tiempo;
@@ -190,7 +208,6 @@ class checker_c #(parameter width = 16, parameter depth = 8);
           end
         end
         
-        //  CASO: ERROR
         default: begin
           $display("[%g] Checker Error: tipo desconocido %s", $time, transaccion.tipo.name());
           $finish;
