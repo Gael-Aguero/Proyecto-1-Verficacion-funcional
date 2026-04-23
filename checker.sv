@@ -14,6 +14,10 @@ class checker_c #(parameter width = 16, parameter depth = 8);
   
   int contador_auxiliar;
 
+  // ✅ DECLARAR AQUÍ LAS VARIABLES LOCALES (NIVEL DE CLASE)
+  trans_fifo #(.width(width)) temp_trans;
+  trans_fifo #(.width(width)) copy_trans;
+
   function new();
     this.emul_fifo = {};
     this.contador_auxiliar = 0;
@@ -21,10 +25,6 @@ class checker_c #(parameter width = 16, parameter depth = 8);
 
   task run;
     $display("[%g] El checker fue inicializado", $time);
-    
-    // ✅ VARIABLES LOCALES DECLARADAS AL INICIO
-    trans_fifo #(.width(width)) temp_trans;
-    trans_fifo #(.width(width)) copy_trans;
     
     forever begin
       to_sb = new();
@@ -73,7 +73,6 @@ class checker_c #(parameter width = 16, parameter depth = 8);
           end else begin
             transaccion.tiempo = $time;
             
-            // ✅ Usar la variable declarada al inicio
             copy_trans = new();
             copy_trans.tipo = transaccion.tipo;
             copy_trans.dato = transaccion.dato;
@@ -161,7 +160,6 @@ class checker_c #(parameter width = 16, parameter depth = 8);
             
             auxiliar = emul_fifo.pop_front();
             
-            // ✅ Usar la variable declarada al inicio
             copy_trans = new();
             copy_trans.tipo = transaccion.tipo;
             copy_trans.dato = transaccion.dato;
