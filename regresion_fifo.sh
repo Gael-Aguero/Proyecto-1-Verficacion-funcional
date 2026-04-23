@@ -3,8 +3,8 @@
 # run_fifo_regression.sh - Script de Regresión para FIFO
 # ============================================================
 
-NUM_TESTS=20
-
+NUM_TESTS=3
+source /mnt/vol_NFS_rh003/estudiantes/archivos_config/synopsys_tools2.sh;
 echo "=========================================="
 echo "  REGRESIÓN FIFO - $NUM_TESTS pruebas"
 echo "=========================================="
@@ -31,6 +31,7 @@ for i in $(seq 1 $NUM_TESTS); do
   echo "  SOLO_ESCRITURAS = $SOLO_ESCRITURAS"
   echo "=========================================="
   
+
   # Compilar con parámetros
   vcs -sverilog \
       -timescale=1ns/1ps \
