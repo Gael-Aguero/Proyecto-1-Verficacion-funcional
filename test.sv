@@ -6,6 +6,7 @@ class test #(parameter width = 16, parameter depth = 8);
   comando_test_sb_mbx    test_sb_mbx;
   comando_test_agent_mbx test_agent_mbx;
   solicitud_sb instr_sb;
+  instrucciones_agente instr_agente;
   
   ambiente #(.depth(depth),.width(width)) ambiente_inst;
   virtual fifo_if #(.width(width)) _if;
@@ -27,7 +28,6 @@ class test #(parameter width = 16, parameter depth = 8);
     ambiente_inst.scoreboard_inst.test_sb_mbx = test_sb_mbx;
     ambiente_inst.agent_inst.test_agent_mbx = test_agent_mbx;
     
-    // Defaults
     cfg_semilla = 1;
     cfg_num_trans = 200;
     cfg_retardo_min = 0;
@@ -85,34 +85,18 @@ class test #(parameter width = 16, parameter depth = 8);
     $display("");
   endfunction
 
-  function bit [width-1:0] gen_dato(int i);
-    case(cfg_patron)
-      "CERO":   return 0;
-      "UNO":    return {width{1'b1}};
-      "AA":     return {width/2{2'b10}};
-      "55":     return {width/2{2'b01}};
-      "SEC":    return i;
-      default:  return $urandom();
-    endcase
-  endfunction
-
-  function tipo_trans tipo_aleatorio();
-    int total = cfg_peso_lectura + cfg_peso_escritura + cfg_peso_simultaneo + cfg_peso_reset;
-    int r = (total > 0) ? ($urandom() % total) : 0;
-    if (r < cfg_peso_lectura) return lectura;
-    if (r < cfg_peso_lectura + cfg_peso_escritura) return escritura;
-    if (r < cfg_peso_lectura + cfg_peso_escritura + cfg_peso_simultaneo) return escritura_lectura;
-    return reset;
-  endfunction
-
   task estado_inicial();
     trans_fifo #(.width(width)) t;
     int n;
     
-    t = new(); t.tipo = reset; t.retardo = 1;
+    // Reset inicial
+    t = new(); 
+    t.tipo = reset; 
+    t.retardo = 1;
     ambiente_inst.agent_inst.agnt_drv_mbx.put(t);
     #20;
     
+    // Calcular elementos según estado
     case(cfg_estado_inicial)
       "LLENO": n = runtime_depth;
       "MITAD": n = runtime_depth / 2;
@@ -120,47 +104,62 @@ class test #(parameter width = 16, parameter depth = 8);
       default: n = $urandom() % (runtime_depth + 1);
     endcase
     
+    // Llenar FIFO
     for (int i = 0; i < n; i++) begin
-      t = new(); t.tipo = escritura; t.dato = $urandom(); t.retardo = 0;
+      t = new(); 
+      t.tipo = escritura; 
+      t.dato = $urandom(); 
+      t.retardo = 1;
       ambiente_inst.agent_inst.agnt_drv_mbx.put(t);
       #2;
     end
+    
     $display("[%g] Estado inicial: %s (%0d/%0d elementos)", $time, cfg_estado_inicial, n, runtime_depth);
     #50;
   endtask
 
   task run;
+    // Conectar interfaz y leer configuración
     ambiente_inst._if = _if;
     leer_plusargs();
     $value$plusargs("WIDTH_ARG=%d", runtime_width);
     $value$plusargs("DEPTH_ARG=%d", runtime_depth);
-    
     $srandom(cfg_semilla);
     
-    // Imprimir la configuración completa
+    // Mostrar configuración general
     imprimir_configuracion();
     
+    // Lanzar ambiente
     fork ambiente_inst.run(); join_none
-    #50;
+    #100;
     
+    // Configurar agente
+    ambiente_inst.agent_inst.num_transacciones = cfg_num_trans;
+    ambiente_inst.agent_inst.max_retardo = cfg_retardo_max;
+    ambiente_inst.agent_inst.patron_datos = cfg_patron;
+    ambiente_inst.agent_inst.contador_patron = 0;
+    ambiente_inst.agent_inst.peso_lectura = cfg_peso_lectura;
+    ambiente_inst.agent_inst.peso_escritura = cfg_peso_escritura;
+    ambiente_inst.agent_inst.peso_simultaneo = cfg_peso_simultaneo;
+    ambiente_inst.agent_inst.peso_reset = cfg_peso_reset;
+    
+    // Establecer estado inicial
     estado_inicial();
     
-    for (int i = 0; i < cfg_num_trans; i++) begin
-      trans_fifo #(.width(width)) t = new();
-      
-      t.tipo = tipo_aleatorio();
-      t.retardo = cfg_retardo_min + ($urandom() % (cfg_retardo_max - cfg_retardo_min + 1));
-      t.dato = gen_dato(i);
-      
-      ambiente_inst.agent_inst.agnt_drv_mbx.put(t);
-      #($urandom() % 5 + 1);
-    end
+    // Enviar instrucción al agente
+    instr_agente = sec_trans_aleatorias;
+    test_agent_mbx.put(instr_agente);
     
-    #500;
+    // Esperar que se complete el tráfico
+    #(cfg_num_trans * (cfg_retardo_max + 5) * 10);
+    #200;
+    
+    // Solicitar reportes
     $display("\n[%g] ========== REPORTES FINALES ==========", $time);
-    instr_sb = retardo_promedio; test_sb_mbx.put(instr_sb); #10;
-    instr_sb = reporte; test_sb_mbx.put(instr_sb); #50;
+    instr_sb = retardo_promedio; test_sb_mbx.put(instr_sb); #50;
+    instr_sb = reporte; test_sb_mbx.put(instr_sb); #100;
     $display("[%g] ========== FIN ==========\n", $time);
     $finish;
   endtask
+  
 endclass
