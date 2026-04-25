@@ -13,6 +13,7 @@ class checker_c #(parameter width = 16, parameter depth = 8);
   trans_sb_mbx  chkr_sb_mbx;
   
   int contador_auxiliar;
+  int ptr_desfase;  // cuenta underflows acumulados — rdPtr adelantado en el DUT
 
   // Variables locales
   trans_fifo #(.width(width)) temp_trans;
@@ -21,6 +22,7 @@ class checker_c #(parameter width = 16, parameter depth = 8);
   function new();
     this.emul_fifo = {};
     this.contador_auxiliar = 0;
+    this.ptr_desfase = 0;
   endfunction 
 
   task run;
@@ -54,39 +56,70 @@ class checker_c #(parameter width = 16, parameter depth = 8);
               $finish;
             end
           end else begin
+            // UNDERFLOW: el DUT avanza rdPtr aunque la FIFO esté vacía,
+            // desincronizando el puntero de lectura. Emulamos esto con un
+            // contador de desfase: cada underflow suma 1. Cuando llegue la
+            // próxima escritura, en lugar de hacer push_back descartamos
+            // el elemento (el DUT lo escribirá en una posición que rdPtr
+            // ya saltó), decrementando el desfase hasta llegar a 0.
             to_sb.clean();
             to_sb.underflow = 1;
             to_sb.tiempo_pop = transaccion.tiempo;
             chkr_sb_mbx.put(to_sb);
-            $display("[%g] CHECKER: UNDERFLOW detectado en lectura", $time);
+            ptr_desfase++;
+            $display("[%g] CHECKER: UNDERFLOW - rdPtr avanzó en vacío, desfase=%0d", $time, ptr_desfase);
           end
         end
         
         escritura: begin
           if(emul_fifo.size() == depth) begin
-            to_sb.clean();
-            to_sb.overflow = 1;
-            to_sb.dato_enviado = transaccion.dato;
-            to_sb.tiempo_push = transaccion.tiempo;
-            chkr_sb_mbx.put(to_sb);
-            $display("[%g] CHECKER: OVERFLOW detectado - dato=0x%h no se pudo escribir", $time, transaccion.dato);
-          end else begin
-            transaccion.tiempo = $time;
+            // OVERFLOW: el DUT avanza wrPtr y sobreescribe mem[wrPtr % Depth],
+            // que corresponde al elemento más antiguo (el del frente de la cola).
+            // Emulamos esto: sacamos el frente y metemos el nuevo dato al fondo,
+            // igual que hace el DUT con sus punteros circulares.
+            auxiliar = emul_fifo.pop_front();  // dato más antiguo se pierde
             
             copy_trans = new();
             copy_trans.tipo = transaccion.tipo;
             copy_trans.dato = transaccion.dato;
-            copy_trans.tiempo = transaccion.tiempo;
+            copy_trans.tiempo = $time;
             copy_trans.retardo = transaccion.retardo;
             copy_trans.dato_out = transaccion.dato_out;
+            emul_fifo.push_back(copy_trans);  // nuevo dato sobreescribe
             
-            emul_fifo.push_back(copy_trans);
-            $display("[%g] CHECKER: Escritura exitosa - dato=0x%h, FIFO size=%0d/%0d", $time, transaccion.dato, emul_fifo.size(), depth);
+            to_sb.clean();
+            to_sb.overflow = 1;
+            to_sb.dato_enviado = auxiliar.dato;  // dato perdido
+            to_sb.tiempo_push = auxiliar.tiempo;
+            chkr_sb_mbx.put(to_sb);
+            $display("[%g] CHECKER: OVERFLOW - wrPtr avanzó, dato antiguo 0x%h perdido, nuevo 0x%h escrito", 
+                     $time, auxiliar.dato, transaccion.dato);
+          end else begin
+            // Si hay desfase por underflows previos, el DUT escribió en una
+            // posición que rdPtr ya saltó — descartamos ese elemento de la
+            // emulación hasta re-sincronizar los punteros.
+            if(ptr_desfase > 0) begin
+              ptr_desfase--;
+              $display("[%g] CHECKER: Escritura descartada por desfase (resync), desfase restante=%0d", $time, ptr_desfase);
+            end else begin
+              transaccion.tiempo = $time;
+              
+              copy_trans = new();
+              copy_trans.tipo = transaccion.tipo;
+              copy_trans.dato = transaccion.dato;
+              copy_trans.tiempo = transaccion.tiempo;
+              copy_trans.retardo = transaccion.retardo;
+              copy_trans.dato_out = transaccion.dato_out;
+              
+              emul_fifo.push_back(copy_trans);
+              $display("[%g] CHECKER: Escritura exitosa - dato=0x%h, FIFO size=%0d/%0d", $time, transaccion.dato, emul_fifo.size(), depth);
+            end
           end
         end
         
         reset: begin
           contador_auxiliar = emul_fifo.size();
+          ptr_desfase = 0;  // reset también sincroniza los punteros
           
           if(contador_auxiliar > 0) begin
             $display("[%g] CHECKER: RESET detectado - se pierden %0d datos", $time, contador_auxiliar);
@@ -110,9 +143,19 @@ class checker_c #(parameter width = 16, parameter depth = 8);
         end
         
         escritura_lectura: begin
-          $display("[%g] CHECKER: Escritura/Lectura simultánea detectada - FIFO size=%0d", $time, emul_fifo.size());
-          
-          if(emul_fifo.size() == 0) begin
+          $display("[%g] CHECKER: Escritura/Lectura simult\u00e1nea detectada - FIFO size=%0d desfase=%0d", $time, emul_fifo.size(), ptr_desfase);
+
+          // Si hay desfase por underflows previos, rdPtr del DUT est\u00e1 adelantado:
+          // la escritura va a wrPtr (posicion que rdPtr ya salt\u00f3) -> se descarta
+          // la lectura lee de rdPtr adelantado -> otro underflow, ptr_desfase se mantiene
+          if(ptr_desfase > 0) begin
+            to_sb.clean();
+            to_sb.underflow = 1;
+            to_sb.tiempo_pop = transaccion.tiempo;
+            chkr_sb_mbx.put(to_sb);
+            $display("[%g] CHECKER: escritura_lectura con desfase - lectura es underflow, desfase=%0d", $time, ptr_desfase);
+
+          end else if(emul_fifo.size() == 0) begin
             $display("[%g] CHECKER: FIFO vacía: dato=0x%h", $time, transaccion.dato);
             
             if(transaccion.dato_out === transaccion.dato) begin

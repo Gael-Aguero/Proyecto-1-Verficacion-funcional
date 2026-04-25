@@ -82,7 +82,7 @@ for i in $(seq 1 $NUM_TESTS); do
     if [ $? -eq 0 ]; then
         echo "  PASS"
         PASSED=$((PASSED + 1))
-        rm -f sim_${i}.log
+        rm -f sim_${i}.log #si quieres ver logs de cada test, quita esto, esto borra los test para que corra limpio
     else
         echo "  FAIL"
         FAILED=$((FAILED + 1))
