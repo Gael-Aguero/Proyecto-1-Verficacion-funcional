@@ -28,11 +28,44 @@ Esto permite una validación tipo *black-box*, basada en el comportamiento real 
 
 ---
 
-## 🚀 Ejecución Rápida
+## 🚀 Guía de Uso
 
-El entorno está diseñado para ejecutarse mediante un script de regresión automatizada.
+El proyecto está diseñado para ejecutarse en un entorno con soporte para SystemVerilog, utilizando un script de regresión automatizada.
 
-### Ejecutar regresión:
+### Flujo de Ejecución
+
+1. Acceder al servidor o entorno de simulación
+2. Ubicarse en la carpeta del proyecto
+3. Ejecutar el script de regresión:
 
 ```bash
-./run_fifo_regression.sh
+./fifo_regresion.sh
+```
+Por defecto, el script ejecuta 50 pruebas automatizadas. Es posible especificar la cantidad de iteraciones como argumento de entrada:
+```bash
+./fifo_regresion.sh 100
+```
+
+---
+## 🛠️ Requisitos
+
+- Simulador compatible con SystemVerilog (QuestaSim / ModelSim / Vivado / VCS)
+- Soporte para interfaces virtuales
+- Entorno Linux recomendado
+- Resolución de tiempo: `1ns / 1ps`
+---
+
+## 📂 Documentación
+
+Para un análisis detallado de cada componente, consulte el reporte técnico completo:
+
+🔗 **Reporte:** [Ver documento](./Documentacion/Documentación%20Proyecto%201%20Verificación-%20AgueroG.AriasK..pdf)
+
+---
+
+## 👥 Estudiantes
+
+| Nombre        | Rol                                 |
+|---------------|-------------------------------------|
+| Gael Agüero   | Estudiante de Ingeniería Electrónica |
+| Kendy Arias   | Estudiante de Ingeniería Electrónica |
